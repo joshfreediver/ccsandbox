@@ -94,10 +94,41 @@
   }
 
   .list { padding: 0 18px 100px; }
+
+  /* Swipeable Expense Item Wrapper */
+  .swipe-wrapper {
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid #ededf0;
+  }
+  .delete-action {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 80px;
+    background: #e53935;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    border: none;
+    z-index: 1;
+  }
   .expense {
-    min-height: 79px; padding: 15px 3px 14px;
-    border-bottom:1px solid #ededf0;
-    display:flex; justify-content:space-between; gap:15px;
+    min-height: 79px; 
+    padding: 15px 3px 14px;
+    display: flex; 
+    justify-content: space-between; 
+    gap: 15px;
+    background: #fff;
+    position: relative;
+    z-index: 2;
+    transition: transform 0.2s ease-out;
+    touch-action: pan-y;
   }
   .merchant { font-size:16px; font-weight:600; line-height:1.15; }
   .date { margin-top:7px; font-size:12px; color:#8a8a90; }
@@ -167,8 +198,8 @@
   </header>
 
   <div class="controls">
-    <input class="search" id="search" type="search" placeholder="Search">
-    <button class="add" id="openAdd">Filter</button>
+    <input class="search" id="search" type="search" placeholder="Search expenses">
+    <button class="add" id="openAdd">+ Add</button>
   </div>
 
   <div class="list" id="list"></div>
@@ -213,6 +244,12 @@
       now.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", hour12:false});
   }
 
+  function deleteExpense(created) {
+    expenses = expenses.filter(e => e.created !== created);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+    render();
+  }
+
   function render() {
     const query = document.getElementById("search").value.trim().toLowerCase();
     const filtered = expenses
@@ -225,14 +262,70 @@
       return;
     }
     list.innerHTML = filtered.map(e => `
-      <div class="expense">
-        <div>
-          <div class="merchant">${escapeHtml(e.merchant)}</div>
-          <div class="date">${formatDate(e.date)}</div>
+      <div class="swipe-wrapper">
+        <button class="delete-action" onclick="deleteExpense(${e.created})">Delete</button>
+        <div class="expense" data-id="${e.created}">
+          <div>
+            <div class="merchant">${escapeHtml(e.merchant)}</div>
+            <div class="date">${formatDate(e.date)}</div>
+          </div>
+          <div class="amount ${e.type === "income" ? "income-amount" : "expense-amount"}">${e.type === "income" ? "+" : "-"}${money(Number(e.amount))}</div>
         </div>
-        <div class="amount ${e.type === "income" ? "income-amount" : "expense-amount"}">${e.type === "income" ? "+" : "-"}${money(Number(e.amount))}</div>
       </div>
     `).join("");
+
+    initSwipeEvents();
+  }
+
+  function initSwipeEvents() {
+    let startX = 0;
+    let currentX = 0;
+    let activeExpense = null;
+
+    document.querySelectorAll('.expense').forEach(el => {
+      const handleStart = e => {
+        // Reset any other open swiped items
+        document.querySelectorAll('.expense').forEach(other => {
+          if (other !== el) other.style.transform = 'translateX(0px)';
+        });
+
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+        activeExpense = el;
+        el.style.transition = 'none';
+      };
+
+      const handleMove = e => {
+        if (!activeExpense) return;
+        currentX = e.touches ? e.touches[0].clientX : e.clientX;
+        const diffX = currentX - startX;
+
+        // Allow swiping left up to -80px
+        if (diffX < 0 && diffX >= -80) {
+          el.style.transform = `translateX(${diffX}px)`;
+        }
+      };
+
+      const handleEnd = () => {
+        if (!activeExpense) return;
+        const diffX = currentX - startX;
+        el.style.transition = 'transform 0.2s ease-out';
+        
+        if (diffX < -40) {
+          el.style.transform = 'translateX(-80px)';
+        } else {
+          el.style.transform = 'translateX(0px)';
+        }
+        activeExpense = null;
+      };
+
+      el.addEventListener('touchstart', handleStart, { passive: true });
+      el.addEventListener('touchmove', handleMove, { passive: true });
+      el.addEventListener('touchend', handleEnd);
+
+      el.addEventListener('mousedown', handleStart);
+      window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleEnd);
+    });
   }
 
   function escapeHtml(str) {
